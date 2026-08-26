@@ -67,24 +67,21 @@ function buildSystemFieldClause(filter: LeadFilter): FilterClause {
       case 'is':
         return { sql: `LOWER(leads.${column}) = LOWER(?)`, params: [value || ''] };
       case 'is not':
-        if (column === 'email') {
-          return {
-            sql: `(LOWER(leads.${column}) != LOWER(?) OR leads.${column} IS NULL)`,
-            params: [value || ''],
-          };
-        }
-        return { sql: `LOWER(leads.${column}) != LOWER(?)`, params: [value || ''] };
+        return {
+          sql: `(LOWER(leads.${column}) != LOWER(?) OR leads.${column} IS NULL)`,
+          params: [value || ''],
+        };
       case 'contain':
-        return { sql: `leads.${column} LIKE ?`, params: [`%${value || ''}%`] };
+        return { sql: `LOWER(leads.${column}) LIKE LOWER(?)`, params: [`%${value || ''}%`] };
       case 'does not contain':
         return {
-          sql: `(leads.${column} NOT LIKE ? OR leads.${column} IS NULL)`,
+          sql: `(LOWER(leads.${column}) NOT LIKE LOWER(?) OR leads.${column} IS NULL)`,
           params: [`%${value || ''}%`],
         };
       case 'starts with':
-        return { sql: `leads.${column} LIKE ?`, params: [`${value || ''}%`] };
+        return { sql: `LOWER(leads.${column}) LIKE LOWER(?)`, params: [`${value || ''}%`] };
       case 'ends with':
-        return { sql: `leads.${column} LIKE ?`, params: [`%${value || ''}`] };
+        return { sql: `LOWER(leads.${column}) LIKE LOWER(?)`, params: [`%${value || ''}`] };
       case 'is empty':
         return {
           sql: `(leads.${column} IS NULL OR leads.${column} = '')`,
@@ -165,51 +162,50 @@ function buildSystemFieldClause(filter: LeadFilter): FilterClause {
 function buildCustomFieldClause(filter: LeadFilter): FilterClause {
   const { fieldId, fieldType, condition, value } = filter;
 
-  const baseExists = `EXISTS (SELECT 1 FROM lead_custom_field_values lcfv WHERE lcfv.lead_id = leads.id AND lcfv.field_id = ?`;
-  const baseNotExists = `NOT EXISTS (SELECT 1 FROM lead_custom_field_values lcfv WHERE lcfv.lead_id = leads.id AND lcfv.field_id = ?`;
+  const exists = (extraWhere: string, extraParams: string[]) => ({
+    sql: `EXISTS (SELECT 1 FROM lead_custom_field_values lcfv WHERE lcfv.lead_id = leads.id AND lcfv.field_id = ? AND ${extraWhere})`,
+    params: [fieldId, ...extraParams],
+  });
+
+  const notExists = (extraWhere: string, extraParams: string[]) => ({
+    sql: `NOT EXISTS (SELECT 1 FROM lead_custom_field_values lcfv WHERE lcfv.lead_id = leads.id AND lcfv.field_id = ? AND ${extraWhere})`,
+    params: [fieldId, ...extraParams],
+  });
+
+  const anyExists = () => ({
+    sql: `EXISTS (SELECT 1 FROM lead_custom_field_values lcfv WHERE lcfv.lead_id = leads.id AND lcfv.field_id = ?)`,
+    params: [fieldId],
+  });
+
+  const noneExists = () => ({
+    sql: `NOT EXISTS (SELECT 1 FROM lead_custom_field_values lcfv WHERE lcfv.lead_id = leads.id AND lcfv.field_id = ?)`,
+    params: [fieldId],
+  });
 
   if (fieldType === 'string') {
     switch (condition) {
       case 'is':
-        return {
-          sql: `${baseExists} AND LOWER(lcfv.value) = LOWER(?))`,
-          params: [fieldId, value || ''],
-        };
+        return exists('LOWER(lcfv.value) = LOWER(?)', [value || '']);
       case 'is not':
         return {
-          sql: `(${baseNotExists} OR LOWER(lcfv.value) != LOWER(?))`,
+          sql: `NOT EXISTS (SELECT 1 FROM lead_custom_field_values lcfv WHERE lcfv.lead_id = leads.id AND lcfv.field_id = ? AND LOWER(lcfv.value) = LOWER(?))`,
           params: [fieldId, value || ''],
         };
       case 'contain':
-        return {
-          sql: `${baseExists} AND lcfv.value LIKE ?)`,
-          params: [fieldId, `%${value || ''}%`],
-        };
+        return exists('LOWER(lcfv.value) LIKE LOWER(?)', [`%${value || ''}%`]);
       case 'does not contain':
         return {
-          sql: `(${baseNotExists} OR lcfv.value NOT LIKE ?)`,
+          sql: `NOT EXISTS (SELECT 1 FROM lead_custom_field_values lcfv WHERE lcfv.lead_id = leads.id AND lcfv.field_id = ? AND LOWER(lcfv.value) LIKE LOWER(?))`,
           params: [fieldId, `%${value || ''}%`],
         };
       case 'starts with':
-        return {
-          sql: `${baseExists} AND lcfv.value LIKE ?)`,
-          params: [fieldId, `${value || ''}%`],
-        };
+        return exists('LOWER(lcfv.value) LIKE LOWER(?)', [`${value || ''}%`]);
       case 'ends with':
-        return {
-          sql: `${baseExists} AND lcfv.value LIKE ?)`,
-          params: [fieldId, `%${value || ''}`],
-        };
+        return exists('LOWER(lcfv.value) LIKE LOWER(?)', [`%${value || ''}`]);
       case 'is empty':
-        return {
-          sql: `(${baseNotExists} OR lcfv.value IS NULL OR lcfv.value = '')`,
-          params: [fieldId],
-        };
+        return noneExists();
       case 'is not empty':
-        return {
-          sql: `${baseExists} AND lcfv.value IS NOT NULL AND lcfv.value != '')`,
-          params: [fieldId],
-        };
+        return anyExists();
       default:
         throw new BadRequestError(`Condition "${condition}" is not supported for custom string field type`);
     }
@@ -218,30 +214,15 @@ function buildCustomFieldClause(filter: LeadFilter): FilterClause {
   if (fieldType === 'number') {
     switch (condition) {
       case 'is':
-        return {
-          sql: `${baseExists} AND CAST(lcfv.value AS REAL) = ?)`,
-          params: [fieldId, value || '0'],
-        };
+        return exists('CAST(lcfv.value AS REAL) = ?', [value || '0']);
       case 'greater than':
-        return {
-          sql: `${baseExists} AND CAST(lcfv.value AS REAL) > ?)`,
-          params: [fieldId, value || ''],
-        };
+        return exists('CAST(lcfv.value AS REAL) > ?', [value || '0']);
       case 'less than':
-        return {
-          sql: `${baseExists} AND CAST(lcfv.value AS REAL) < ?)`,
-          params: [fieldId, value || ''],
-        };
+        return exists('CAST(lcfv.value AS REAL) < ?', [value || '0']);
       case 'is empty':
-        return {
-          sql: `(${baseNotExists} OR lcfv.value IS NULL OR lcfv.value = '')`,
-          params: [fieldId],
-        };
+        return noneExists();
       case 'is not empty':
-        return {
-          sql: `${baseExists} AND lcfv.value IS NOT NULL AND lcfv.value != '')`,
-          params: [fieldId],
-        };
+        return anyExists();
       default:
         throw new BadRequestError(`Condition "${condition}" is not supported for custom number field type`);
     }
@@ -250,30 +231,15 @@ function buildCustomFieldClause(filter: LeadFilter): FilterClause {
   if (fieldType === 'date') {
     switch (condition) {
       case 'before':
-        return {
-          sql: `${baseExists} AND lcfv.value < ?)`,
-          params: [fieldId, value || ''],
-        };
+        return exists('lcfv.value < ?', [value || '']);
       case 'after':
-        return {
-          sql: `${baseExists} AND lcfv.value > ?)`,
-          params: [fieldId, value || ''],
-        };
+        return exists('lcfv.value > ?', [value || '']);
       case 'is':
-        return {
-          sql: `${baseExists} AND DATE(lcfv.value) = DATE(?))`,
-          params: [fieldId, value || ''],
-        };
+        return exists('DATE(lcfv.value) = DATE(?)', [value || '']);
       case 'is empty':
-        return {
-          sql: `(${baseNotExists} OR lcfv.value IS NULL OR lcfv.value = '')`,
-          params: [fieldId],
-        };
+        return noneExists();
       case 'is not empty':
-        return {
-          sql: `${baseExists} AND lcfv.value IS NOT NULL AND lcfv.value != '')`,
-          params: [fieldId],
-        };
+        return anyExists();
       default:
         throw new BadRequestError(`Condition "${condition}" is not supported for custom date field type`);
     }
@@ -283,28 +249,19 @@ function buildCustomFieldClause(filter: LeadFilter): FilterClause {
     switch (condition) {
       case 'is':
         if (value === 'true') {
-          return {
-            sql: `${baseExists} AND lcfv.value = 'true')`,
-            params: [fieldId],
-          };
+          return exists('lcfv.value = ?', ['true']);
         }
         if (value === 'false') {
           return {
-            sql: `(${baseNotExists} OR lcfv.value = 'false')`,
-            params: [fieldId],
+            sql: `NOT EXISTS (SELECT 1 FROM lead_custom_field_values lcfv WHERE lcfv.lead_id = leads.id AND lcfv.field_id = ? AND lcfv.value = ?)`,
+            params: [fieldId, 'true'],
           };
         }
         throw new BadRequestError('Boolean "is" condition requires value "true" or "false"');
       case 'is empty':
-        return {
-          sql: `(${baseNotExists} OR lcfv.value IS NULL OR lcfv.value = '')`,
-          params: [fieldId],
-        };
+        return noneExists();
       case 'is not empty':
-        return {
-          sql: `${baseExists} AND lcfv.value IS NOT NULL AND lcfv.value != '')`,
-          params: [fieldId],
-        };
+        return anyExists();
       default:
         throw new BadRequestError(`Condition "${condition}" is not supported for custom boolean field type`);
     }
@@ -330,7 +287,7 @@ function buildFreeTextClause(q: string): FilterClause {
   }
 
   return {
-    sql: `(leads.name LIKE ? OR leads.phone LIKE ? OR leads.email LIKE ? OR leads.e164 LIKE ?)`,
+    sql: `(LOWER(leads.name) LIKE LOWER(?) OR LOWER(leads.phone) LIKE LOWER(?) OR LOWER(leads.email) LIKE LOWER(?) OR LOWER(leads.e164) LIKE LOWER(?))`,
     params: [`%${trimmed}%`, `%${trimmed}%`, `%${trimmed}%`, `%${trimmed}%`],
   };
 }

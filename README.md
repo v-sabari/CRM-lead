@@ -9,8 +9,7 @@ A standalone Express + TypeScript service implementing a flexible lead search/fi
 | Runtime     | Node 20+                  |
 | Framework   | Express                   |
 | Language    | TypeScript                |
-| DB          | SQLite (better-sqlite3)   |
-| ORM         | Drizzle ORM               |
+| DB          | SQLite (sql.js)           |
 | Validation  | Zod                       |
 
 ## Setup
@@ -206,16 +205,13 @@ Expected: 401 error
 
 ## Design Decisions
 
-### ORM Choice: Drizzle over Prisma/Knex
-Drizzle gives us type-safe SQL with minimal overhead. Unlike Prisma, it doesn't generate a client or require migrations for SQLite, making the setup simpler. Unlike raw Knex, we get TypeScript types.
-
 ### Empty Value Semantics
 - `is empty` = column IS NULL OR column = ''
 - `is not empty` = column IS NOT NULL AND column != ''
 - This covers both NULL and empty string cases, which is common in CRM data
 
 ### Custom Field Filters: EXISTS/NOT EXISTS
-Custom fields use EAV pattern with `EXISTS`/`NOT EXISTS` subqueries. This avoids row explosion that would happen with LEFT JOINs when a lead has multiple custom field values.
+Custom fields use EAV pattern with `EXISTS`/`NOT EXISTS` subqueries. This avoids row explosion that would happen with LEFT JOINs when a lead has multiple custom field values. For `is not` and `does not contain`, a single `NOT EXISTS` subquery with the matching condition is used (e.g., "no row with this value" = lead either has different value or no value at all).
 
 ### Id-then-Hydrate Pattern
 1. First query: SELECT matching lead IDs with WHERE/ORDER BY/LIMIT
@@ -223,6 +219,9 @@ Custom fields use EAV pattern with `EXISTS`/`NOT EXISTS` subqueries. This avoids
 3. Third query: SELECT custom field values for those leads in batch
 
 This prevents N+1 queries and avoids row multiplication from JOINs.
+
+### Case-Insensitive Matching (SQLite)
+SQLite's `LIKE` is case-sensitive by default. All string comparisons use `LOWER()` on both sides for proper case-insensitive behavior, matching PostgreSQL's `ILIKE` semantics.
 
 ### Agent Visibility
 Agents only see leads where `assigned_to = their userId`. NULL `assigned_to` values don't match any specific agent, so unassigned leads are invisible to agents.
@@ -234,13 +233,26 @@ Agents only see leads where `assigned_to = their userId`. NULL `assigned_to` val
 ### Nulls Last for followUpDate ASC
 When sorting by followUpDate ascending, leads without a follow-up date appear last. This is the most practical behavior for CRM agents.
 
+### Null Safety for "is not" / "does not contain"
+Per spec, null values should be considered "not equal" to any specific value. So `email is not "ram@example.com"` includes Priya (null email). Similarly, `does not contain` uses null-safe comparison.
+
+## Suggested Indexes for Production (Postgres)
+
+```sql
+CREATE INDEX idx_leads_tenant_id ON leads(tenant_id);
+CREATE INDEX idx_leads_tenant_assigned ON leads(tenant_id, assigned_to);
+CREATE INDEX idx_leads_tenant_created ON leads(tenant_id, created_at);
+CREATE INDEX idx_cf_tenant ON custom_fields(tenant_id, status);
+CREATE INDEX idx_cfv_lead_field ON lead_custom_field_values(lead_id, field_id);
+CREATE INDEX idx_cfv_field_value ON lead_custom_field_values(field_id, value);
+```
+
 ## What I Would Improve With Another Day
 
-1. **Postgres migration**: Move from SQLite to Postgres for production-grade JSONB support and better concurrent access
+1. **Postgres migration**: Move from SQLite to Postgres for production-grade concurrent access
 2. **OpenAPI/Swagger**: Add auto-generated API docs
 3. **Rate limiting**: Redis-based rate limiting per tenant
 4. **JWT authentication**: Real auth with token validation
 5. **Custom field metadata caching**: Cache custom field definitions to avoid repeated lookups
-6. **Compound indexes**: Add indexes for (tenant_id, assigned_to), (tenant_id, created_at), etc.
-7. **Partial indexes**: For common filter patterns
-8. **Cursor-based pagination**: More efficient than offset for large datasets
+6. **Cursor-based pagination**: More efficient than offset for large datasets
+7. **Boolean `is false` on custom fields**: Currently treats "false" as "NOT true"; could be more precise
