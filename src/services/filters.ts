@@ -15,6 +15,10 @@ const SYSTEM_FIELDS: Record<string, { column: string; type: string }> = {
 
 type FilterClause = { sql: string; params: string[] };
 
+function isValidDateString(v: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(Date.parse(v));
+}
+
 function buildSystemFieldClause(filter: LeadFilter): FilterClause {
   const systemField = SYSTEM_FIELDS[filter.fieldId];
   if (!systemField) {
@@ -98,13 +102,18 @@ function buildSystemFieldClause(filter: LeadFilter): FilterClause {
   }
 
   if (type === 'date') {
+    if (condition !== 'is empty' && condition !== 'is not empty') {
+      if (!value || !isValidDateString(value)) {
+        throw new BadRequestError(`Invalid date value "${value || ''}". Expected YYYY-MM-DD format.`);
+      }
+    }
     switch (condition) {
       case 'before':
-        return { sql: `leads.${column} < ?`, params: [value || ''] };
+        return { sql: `leads.${column} < ?`, params: [value!] };
       case 'after':
-        return { sql: `leads.${column} > ?`, params: [value || ''] };
+        return { sql: `leads.${column} > ?`, params: [value!] };
       case 'is':
-        return { sql: `DATE(leads.${column}) = DATE(?)`, params: [value || ''] };
+        return { sql: `DATE(leads.${column}) = DATE(?)`, params: [value!] };
       case 'is empty':
         return { sql: `leads.${column} IS NULL`, params: [] };
       case 'is not empty':
@@ -229,13 +238,18 @@ function buildCustomFieldClause(filter: LeadFilter): FilterClause {
   }
 
   if (fieldType === 'date') {
+    if (condition !== 'is empty' && condition !== 'is not empty') {
+      if (!value || !isValidDateString(value)) {
+        throw new BadRequestError(`Invalid date value "${value || ''}". Expected YYYY-MM-DD format.`);
+      }
+    }
     switch (condition) {
       case 'before':
-        return exists('lcfv.value < ?', [value || '']);
+        return exists('lcfv.value < ?', [value!]);
       case 'after':
-        return exists('lcfv.value > ?', [value || '']);
+        return exists('lcfv.value > ?', [value!]);
       case 'is':
-        return exists('DATE(lcfv.value) = DATE(?)', [value || '']);
+        return exists('DATE(lcfv.value) = DATE(?)', [value!]);
       case 'is empty':
         return noneExists();
       case 'is not empty':

@@ -9,7 +9,6 @@ const AGENT_A2 = '44444444-4444-4444-4444-444444444444';
 const AGENT_B1 = '55555555-5555-5555-5555-555555555555';
 
 const ADMIN_USER = '66666666-6666-6666-6666-666666666666';
-const OWNER_USER = '77777777-7777-7777-7777-777777777777';
 
 const CITY_FIELD = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const SCORE_FIELD = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
@@ -71,7 +70,6 @@ async function seed() {
   console.log('Tenant A ID:', TENANT_A);
   console.log('Tenant B ID:', TENANT_B);
   console.log('Admin User ID:', ADMIN_USER);
-  console.log('Owner User ID:', OWNER_USER);
   console.log('Agent A1 ID:', AGENT_A1);
   console.log('Agent A2 ID:', AGENT_A2);
   console.log('Agent B1 ID:', AGENT_B1);

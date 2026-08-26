@@ -58,7 +58,8 @@ export async function initDB(): Promise<Database> {
       id TEXT PRIMARY KEY,
       lead_id TEXT NOT NULL,
       field_id TEXT NOT NULL,
-      value TEXT
+      value TEXT,
+      UNIQUE(lead_id, field_id)
     )
   `);
 

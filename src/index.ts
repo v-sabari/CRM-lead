@@ -1,5 +1,5 @@
 import app from './app';
-import { initDB, queryOne } from './db/client';
+import { initDB, queryOne, run as dbRun, saveDB } from './db/client';
 import { v4 as uuidv4 } from 'uuid';
 
 const TENANT_A = '11111111-1111-1111-1111-111111111111';
@@ -10,8 +10,6 @@ const AGENT_B1 = '55555555-5555-5555-5555-555555555555';
 const ADMIN_USER = '66666666-6666-6666-6666-666666666666';
 const CITY_FIELD = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const SCORE_FIELD = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
-
-import { run as dbRun } from './db/client';
 
 function seedIfEmpty() {
   const row = queryOne('SELECT COUNT(*) as cnt FROM leads') as { cnt: number } | null;
@@ -62,6 +60,7 @@ function seedIfEmpty() {
     dbRun(`INSERT INTO lead_custom_field_values (id, lead_id, field_id, value) VALUES (?, ?, ?, ?)`, [uuidv4(), lead.id, SCORE_FIELD, lead.score]);
   }
 
+  saveDB();
   console.log('Seed completed!');
 }
 
