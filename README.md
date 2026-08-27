@@ -203,6 +203,49 @@ curl -s -X POST 'http://localhost:3000/api/v1/leads/query?page=1&limit=20' \
 
 Expected: 401 error
 
+## CRUD Endpoints
+
+In addition to the query endpoint, the leads resource supports full CRUD. All endpoints require the same auth headers (`x-tenant-id`, `x-user-id`, `x-user-role`).
+
+| Method | Path                 | Description                        | Permission                          |
+| ------ | -------------------- | ---------------------------------- | ----------------------------------- |
+| `GET`  | `/api/v1/leads/:id`  | Fetch a single lead                | Any authenticated role (tenant-scoped) |
+| `POST` | `/api/v1/leads`       | Create a new lead                  | Any role (agents must self-assign)  |
+| `PUT`  | `/api/v1/leads/:id`  | Update a lead                      | owner/admin/manager; agent if assigned to them |
+| `DELETE` | `/api/v1/leads/:id` | Delete a lead (and its custom field values) | owner/admin/manager only |
+
+**Permission rules:**
+- **owner / admin / manager** — full read/write/delete on all leads in their tenant
+- **agent** — can read any lead in the tenant, create leads assigned to self (or unassigned), update leads assigned to them, but **cannot delete** and cannot update leads assigned to others
+
+**Create body:**
+
+```json
+{
+  "name": "New Lead",
+  "phone": "9000000001",
+  "countryCode": "+91",
+  "email": "new@example.com",
+  "assignedTo": "33333333-3333-3333-3333-333333333333",
+  "followUpDate": "2026-09-15"
+}
+```
+
+`email`, `assignedTo`, and `followUpDate` are optional. `countryCode` defaults to `+91`. `e164` is computed as `countryCode + phone`.
+
+**Update body:** any subset of the fields above. At least one field is required.
+
+**Example: Create a lead**
+
+```bash
+curl -s -X POST 'http://localhost:3000/api/v1/leads' \
+  -H 'content-type: application/json' \
+  -H 'x-tenant-id: 11111111-1111-1111-1111-111111111111' \
+  -H 'x-user-id: 66666666-6666-6666-6666-666666666666' \
+  -H 'x-user-role: admin' \
+  -d '{ "name": "New Lead", "phone": "9000000001", "email": "new@example.com" }'
+```
+
 ## Design Decisions
 
 ### Empty Value Semantics
