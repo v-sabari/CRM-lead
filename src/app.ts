@@ -11,8 +11,17 @@ app.use(express.json());
 
 app.use('/api/v1/leads', authMiddleware, leadsRouter);
 
+app.get('/', (_req, res) => {
+  res.json({
+    service: 'CRM Lead Filter Query API',
+    version: '1.0.0',
+    health: '/health',
+    query: 'POST /api/v1/leads/query',
+  });
+});
+
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', uptime: process.uptime() });
 });
 
 app.use(errorHandler);
